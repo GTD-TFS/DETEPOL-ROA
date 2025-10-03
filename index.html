@@ -51,15 +51,8 @@
   button{color:#fff;padding:14px 26px;border:none;border-radius:10px;font-weight:800;font-size:15px;text-transform:uppercase;cursor:pointer;letter-spacing:.6px;display:block;width:100%;margin-bottom:20px;}
   button:hover{opacity:0.9;}
   #message{margin-top:12px;text-align:center;font-weight:bold;color:#fff;}
-  .full-width {
-    grid-column: span 3;
-  }
-  /* Reduce la altura por defecto de todas las tarjetas */
-  .field-card {
-    padding: 10px;
-    gap: 6px;
-    min-height: 64px;
-  }
+  .full-width { grid-column: span 3; }
+  .field-card { padding: 10px; gap: 6px; min-height: 64px; }
   textarea { min-height: 34px; }
 
   .grid-rows { display: flex; flex-wrap: wrap; gap: .5rem; }
@@ -293,6 +286,11 @@
       <button type="button" class="refresh" onclick="location.reload();">
         🔄 Refrescar 🔄
       </button>
+
+      <!-- Botón a ROA: aparece SOLO tras descargar -->
+      <button type="button" id="goRoaBtn" style="display:none; background:#1d4ed8; border:none; border-radius:10px; padding:14px 26px; color:#fff; font-weight:800; text-transform:uppercase; width:75%; max-width:400px;">
+        ➡️ Ir a R.O.A.
+      </button>
     </div>
 
     <div id="message"></div>
@@ -463,9 +461,10 @@
       };
     }
 
-    // Guardar XLSX
+    // Guardar XLSX (MOD: devuelve true/false y es robusto en iOS)
     async function saveBlobXlsx(uint8, filename){
       const blob = new Blob([uint8], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+
       if (window.showSaveFilePicker) {
         try {
           const handle = await window.showSaveFilePicker({
@@ -475,14 +474,22 @@
           const writable = await handle.createWritable();
           await writable.write(blob);
           await writable.close();
-          return;
+          return true;
         } catch(e) { console.warn('FSA fallback XLSX', e); }
       }
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url; a.download = filename;
-      document.body.appendChild(a); a.click();
-      setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 1500);
+
+      try {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 1500);
+        return true;
+      } catch(e) {
+        console.error('No se pudo descargar XLSX:', e);
+        return false;
+      }
     }
 
     /* =================== 🔗 Puente a ROA =================== */
@@ -502,7 +509,7 @@
       return "";
     }
 
-    // Construye el paquete que el ROA podrá consumir desde sessionStorage
+    // Construye el paquete que el ROA podrá consumir desde sessionStorage/URL
     function buildRoaPayloadFromRegistro(data){
       const {primer,segundo} = splitApellidos(data["APELLIDOS"]);
       const domDisplay = (data["DOMICILIO_OPCION"]==="OTRO") ? (data["DOMICILIO"]||"") : (data["DOMICILIO_OPCION"]||"");
@@ -517,8 +524,8 @@
         "SEGUNDO APELLIDO": segundo,
         "FECHA DE NACIMIENTO": data["FECHA DE NACIMIENTO"] || "",
         "LUGAR DE NACIMIENTO": data["LUGAR DE NACIMIENTO"] || "",
-        "PROVINCIA": "",                       // si procede
-        "PAÍS": data["NACIONALIDAD"] || "",    // espejo de nacionalidad
+        "PROVINCIA": "",
+        "PAÍS": data["NACIONALIDAD"] || "",
         "NACIONALIDAD": data["NACIONALIDAD"] || "",
         "NOMBRE DE LOS PADRES": (data["NOMBRE_PADRES_OPCION"]==="OTRO" ? (data["NOMBRE_PADRES"]||"") : (data["NOMBRE_PADRES_OPCION"]||"")),
         "PROFESIÓN": "",
@@ -536,125 +543,8 @@
         "FUNCIONARIO EMISOR":"", "FECHA DE CUMPLIMENTACION":""
       };
     }
-    /* ====================================================== */
 
-    // Generar SOLO el XLSX (flujo existente + prompt para ROA)
-    async function generarSoloXLSX(){
-      const msg = document.getElementById("message");
-      msg.innerText = "Generando XLSX...";
-
-      try{
-        const form = document.getElementById("registroForm");
-        const fd = new FormData(form);
-        const data = {}; fd.forEach((v,k)=>data[k]=v);
-
-        const U = s => String(s ?? '').toUpperCase();
-        const sanitizeForFilename = s => String(s||'').replace(/[\/\:*?"<>|]+/g,' ').trim();
-
-        const optTD = data["TIPO DOCUMENTO_OPCION"];
-        data["TIPO DOCUMENTO"] = (optTD === "OTRO") ? (data["TIPO DOCUMENTO"]||"") : optTD;
-        data["NºDOCUMENTO"] = (optTD === "INDOCUMENTADO/A") ? "" : (data["NºDOCUMENTO"] || "");
-        data["SEXO"] = data["SEXO_OPCION"] || "";
-        data["INSTRUCTOR"] = data["INSTRUCTOR"] || "";
-        data["FECHA_GENERACION"] = document.getElementById('fechaGeneracion')?.value || '';
-
-        // Delitos (si usas el sub-globo)
-        let delitoTexto = "";
-        if (typeof delitosElegidos !== "undefined") {
-          if (delitosElegidos.length === 1) delitoTexto = delitosElegidos[0];
-          else if (delitosElegidos.length === 2) delitoTexto = delitosElegidos[0] + " y " + delitosElegidos[1];
-          else if (delitosElegidos.length > 2) delitoTexto = delitosElegidos.slice(0,-1).join(", ") + " y " + delitosElegidos[delitosElegidos.length-1];
-        }
-        data["DELITO"] = delitoTexto;
-
-        const abOpt = data["ABOGADO_OPCION"];
-        data["ABOGADO"] = (abOpt === "DE OFICIO") ? "de oficio." : (abOpt === "OTRO" ? (data["ABOGADO"]||"") : (data["ABOGADO"]||""));
-
-        const ccOpt = data["COMUNICARSE CON_OPCION"];
-        data["COMUNICARSE CON:"] = (ccOpt === "NADIE") ? "nadie." : (ccOpt === "OTRO" ? (data["COMUNICARSE CON:"]||"") : (data["COMUNICARSE CON:"]||""));
-
-        const infOpt = data["INFORMAR DE DETENCION_OPCION"];
-        data["INFORMAR DE DETENCION"] = (infOpt === "NADIE") ? "nadie." : (infOpt === "OTRO" ? (data["INFORMAR DE DETENCION"]||"") : (data["INFORMAR DE DETENCION"]||""));
-
-        const intOpt = data["INTERPRETE_OPCION"] || "NO";
-        let interpreteDisplay = "NO";
-        if (intOpt === "OTRO") interpreteDisplay = data["IDIOMA"] || "";
-        else if (intOpt !== "NO") interpreteDisplay = intOpt;
-        data["IDIOMA"] = interpreteDisplay;
-        data["INTERPRETE"] = interpreteDisplay;
-
-        const nomDisplay = (data["NOMBRE_PADRES_OPCION"]==="OTRO") ? (data["NOMBRE_PADRES"]||"") : (data["NOMBRE_PADRES_OPCION"]||"");
-        const domDisplay = (data["DOMICILIO_OPCION"]==="OTRO") ? (data["DOMICILIO"]||"") : (data["DOMICILIO_OPCION"]||"");
-        const telDisplay = (data["TELÉFONO_OPCION"]==="OTRO") ? (data["TELÉFONO"]||"") : (data["TELÉFONO_OPCION"]||"");
-        data["NOMBRE_PADRES"] = nomDisplay;
-        data["Nombre de los Padres"] = nomDisplay;
-        data["DOMICILIO"] = domDisplay;
-        data["TELÉFONO"] = telDisplay;
-
-        data["MEDICO"] = (data["MEDICO"]==="SI") ? "SI" : "NO";
-        data["CONSULADO"] = (data["CONSULADO"]==="SI") ? "SI" : "NO";
-
-        const hoy = new Date();
-        const dd = String(hoy.getDate()).padStart(2,'0');
-        const mm = String(hoy.getMonth()+1).padStart(2,'0');
-        const yyyy = String(hoy.getFullYear());
-        const fechaStr = `${dd}-${mm}-${yyyy}`;
-
-        const filas = [
-          ["Nombre", U(data["Nombre"])],
-          ["Apellidos", U(data["APELLIDOS"])],
-          ["Tipo de documento", U(data["TIPO DOCUMENTO"])],
-          ["Nº Documento", U(data["NºDOCUMENTO"])],
-          ["Sexo", U(data["SEXO"])],
-          ["Nacionalidad", U(data["NACIONALIDAD"])],
-          ["Nombre de los Padres", U(data["Nombre de los Padres"])],
-          ["Fecha de nacimiento", U(data["FECHA DE NACIMIENTO"])],
-          ["Lugar de nacimiento", U(data["LUGAR DE NACIMIENTO"])],
-          ["Domicilio", U(domDisplay)],
-          ["Teléfono", U(telDisplay)],
-          ["Delito", U(data["DELITO"])],
-          ["C.P. Agentes", U(data["C.P. AGENTES"])],
-          ["Diligencias", U(data["DILIGENCIAS"])],
-          ["Instructor", U(data["INSTRUCTOR"])],
-          ["Lugar del hecho", U(data["LUGAR DEL HECHO"])],
-          ["Lugar de la detención", U(data["LUGAR DE LA DETENCIÓN"])],
-          ["Hora del hecho", (document.getElementById('horaHecho')?.value || data["HORA DEL HECHO"] || "").trim()],
-          ["Hora de la detención", (document.getElementById('horaDetencion')?.value || data["HORA DE LA DETENCIÓN"] || "").trim()],
-          ["Breve resumen de los hechos", U(data["BREVE RESUMEN DE LOS HECHOS"])],
-          ["Indicios por los que se detiene", U(data["INDICIOS POR LOS QUE SE DETIENE"])],
-          ["Abogado", U(data["ABOGADO"])],
-          ["Comunicarse con", U(data["COMUNICARSE CON:"])],
-          ["Informar de detención", U(data["INFORMAR DE DETENCION"])],
-          ["Intérprete", U(interpreteDisplay)],
-          ["Médico", U(data["MEDICO"])],
-          ["Consulado", U(data["CONSULADO"])],
-          ["Indicativo", U(data["Indicativo"])],
-          ["Fecha de generación", U(data["FECHA_GENERACION"])]
-        ];
-
-        const xlsx = await generarXLSXUint8(filas, "Resumen");
-        const excelName = `${sanitizeForFilename(data["Nombre"]||"")} ${sanitizeForFilename(data["APELLIDOS"]||"")} ${fechaStr}.xlsx`.trim() || "Resumen.xlsx";
-        await saveBlobXlsx(xlsx, excelName);
-
-        // 🔗 Tras la descarga: ofrecer continuar al R.O.A.
-        const payload = buildRoaPayloadFromRegistro(data);
-        try { sessionStorage.setItem("registro→roa", JSON.stringify(payload)); } catch(e) { console.warn("sessionStorage no disponible", e); }
-
-        document.getElementById("message").innerText = "✅ XLSX generado y descargado";
-
-        // Confirmamos navegación (no interfiere si el usuario cancela)
-        const ir = confirm("¿Continuar al R.O.A. con los datos exportados?");
-        if (ir) {
-          // Señal opcional en URL para que ROA sepa que hay prefill
-          location.href = RUTA_ROA + (RUTA_ROA.includes("?") ? "&" : "?") + "prefill=1";
-        }
-      } catch(err){
-        console.error(err);
-        document.getElementById("message").innerText = "❌ " + (err?.message || err);
-      }
-    }
-
-    // ====== ODT/XLSX internos (sin cambios funcionales) ======
+    // ====== ODT/XLSX internos (sin cambios funcionales salvo estilos) ======
     async function generarODTUint8(base64, dataUpper){
       const bytes=Uint8Array.from(atob(base64.replace(/[\r\n\t ]+/g,"")),c=>c.charCodeAt(0));
       const zip=await JSZip.loadAsync(bytes);
@@ -791,7 +681,7 @@
 <cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties"
  xmlns:dc="http://purl.org/dc/elements/1.1/"
  xmlns:dcterms="http://purl.org/dc/terms/"
- xmlns:dcmitype="http://purl.org/dcmitype/"
+ xmlns:dcmitype="http://purl.org/dc/dcmitype/"
  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <dc:title>Resumen Registro</dc:title>
   <dc:subject>Registro de Detenidos</dc:subject>
@@ -827,6 +717,131 @@
       props.file('app.xml', app);
 
       return await x.generateAsync({type:'uint8array'});
+    }
+
+    // === MOD: flujo de generación y botón a ROA (iOS-safe) ===
+    async function generarSoloXLSX(){
+      const msg = document.getElementById("message");
+      msg.innerText = "Generando XLSX...";
+
+      try{
+        const form = document.getElementById("registroForm");
+        const fd = new FormData(form);
+        const data = {}; fd.forEach((v,k)=>data[k]=v);
+
+        const U = s => String(s ?? '').toUpperCase();
+        const sanitizeForFilename = s => String(s||'').replace(/[\/\:*?"<>|]+/g,' ').trim();
+
+        const optTD = data["TIPO DOCUMENTO_OPCION"];
+        data["TIPO DOCUMENTO"] = (optTD === "OTRO") ? (data["TIPO DOCUMENTO"]||"") : optTD;
+        data["NºDOCUMENTO"] = (optTD === "INDOCUMENTADO/A") ? "" : (data["NºDOCUMENTO"] || "");
+        data["SEXO"] = data["SEXO_OPCION"] || "";
+        data["INSTRUCTOR"] = data["INSTRUCTOR"] || "";
+        data["FECHA_GENERACION"] = document.getElementById('fechaGeneracion')?.value || '';
+
+        let delitoTexto = "";
+        if (typeof delitosElegidos !== "undefined") {
+          if (delitosElegidos.length === 1) delitoTexto = delitosElegidos[0];
+          else if (delitosElegidos.length === 2) delitoTexto = delitosElegidos[0] + " y " + delitosElegidos[1];
+          else if (delitosElegidos.length > 2) delitoTexto = delitosElegidos.slice(0,-1).join(", ") + " y " + delitosElegidos[delitosElegidos.length-1];
+        }
+        data["DELITO"] = delitoTexto;
+
+        const abOpt = data["ABOGADO_OPCION"];
+        data["ABOGADO"] = (abOpt === "DE OFICIO") ? "de oficio." : (abOpt === "OTRO" ? (data["ABOGADO"]||"") : (data["ABOGADO"]||""));
+
+        const ccOpt = data["COMUNICARSE CON_OPCION"];
+        data["COMUNICARSE CON:"] = (ccOpt === "NADIE") ? "nadie." : (ccOpt === "OTRO" ? (data["COMUNICARSE CON:"]||"") : (data["COMUNICARSE CON:"]||""));
+
+        const infOpt = data["INFORMAR DE DETENCION_OPCION"];
+        data["INFORMAR DE DETENCION"] = (infOpt === "NADIE") ? "nadie." : (infOpt === "OTRO" ? (data["INFORMAR DE DETENCION"]||"") : (data["INFORMAR DE DETENCION"]||""));
+
+        const intOpt = data["INTERPRETE_OPCION"] || "NO";
+        let interpreteDisplay = "NO";
+        if (intOpt === "OTRO") interpreteDisplay = data["IDIOMA"] || "";
+        else if (intOpt !== "NO") interpreteDisplay = intOpt;
+        data["IDIOMA"] = interpreteDisplay;
+        data["INTERPRETE"] = interpreteDisplay;
+
+        const nomDisplay = (data["NOMBRE_PADRES_OPCION"]==="OTRO") ? (data["NOMBRE_PADRES"]||"") : (data["NOMBRE_PADRES_OPCION"]||"");
+        const domDisplay = (data["DOMICILIO_OPCION"]==="OTRO") ? (data["DOMICILIO"]||"") : (data["DOMICILIO_OPCION"]||"");
+        const telDisplay = (data["TELÉFONO_OPCION"]==="OTRO") ? (data["TELÉFONO"]||"") : (data["TELÉFONO_OPCION"]||"");
+        data["NOMBRE_PADRES"] = nomDisplay;
+        data["Nombre de los Padres"] = nomDisplay;
+        data["DOMICILIO"] = domDisplay;
+        data["TELÉFONO"] = telDisplay;
+
+        data["MEDICO"] = (data["MEDICO"]==="SI") ? "SI" : "NO";
+        data["CONSULADO"] = (data["CONSULADO"]==="SI") ? "SI" : "NO";
+
+        const hoy = new Date();
+        const dd = String(hoy.getDate()).padStart(2,'0');
+        const mm = String(hoy.getMonth()+1).padStart(2,'0');
+        const yyyy = String(hoy.getFullYear());
+        const fechaStr = `${dd}-${mm}-${yyyy}`;
+
+        const filas = [
+          ["Nombre", U(data["Nombre"])],
+          ["Apellidos", U(data["APELLIDOS"])],
+          ["Tipo de documento", U(data["TIPO DOCUMENTO"])],
+          ["Nº Documento", U(data["NºDOCUMENTO"])],
+          ["Sexo", U(data["SEXO"])],
+          ["Nacionalidad", U(data["NACIONALIDAD"])],
+          ["Nombre de los Padres", U(data["Nombre de los Padres"])],
+          ["Fecha de nacimiento", U(data["FECHA DE NACIMIENTO"])],
+          ["Lugar de nacimiento", U(data["LUGAR DE NACIMIENTO"])],
+          ["Domicilio", U(domDisplay)],
+          ["Teléfono", U(telDisplay)],
+          ["Delito", U(data["DELITO"])],
+          ["C.P. Agentes", U(data["C.P. AGENTES"])],
+          ["Diligencias", U(data["DILIGENCIAS"])],
+          ["Instructor", U(data["INSTRUCTOR"])],
+          ["Lugar del hecho", U(data["LUGAR DEL HECHO"])],
+          ["Lugar de la detención", U(data["LUGAR DE LA DETENCIÓN"])],
+          ["Hora del hecho", (document.getElementById('horaHecho')?.value || data["HORA DEL HECHO"] || "").trim()],
+          ["Hora de la detención", (document.getElementById('horaDetencion')?.value || data["HORA DE LA DETENCIÓN"] || "").trim()],
+          ["Breve resumen de los hechos", U(data["BREVE RESUMEN DE LOS HECHOS"])],
+          ["Indicios por los que se detiene", U(data["INDICIOS POR LOS QUE SE DETIENE"])],
+          ["Abogado", U(data["ABOGADO"])],
+          ["Comunicarse con", U(data["COMUNICARSE CON:"])],
+          ["Informar de detención", U(data["INFORMAR DE DETENCION"])],
+          ["Intérprete", U(interpreteDisplay)],
+          ["Médico", U(data["MEDICO"])],
+          ["Consulado", U(data["CONSULADO"])],
+          ["Indicativo", U(data["Indicativo"])],
+          ["Fecha de generación", U(data["FECHA_GENERACION"])]
+        ];
+
+        const xlsx = await generarXLSXUint8(filas, "Resumen");
+        const excelName = `${sanitizeForFilename(data["Nombre"]||"")} ${sanitizeForFilename(data["APELLIDOS"]||"")} ${fechaStr}.xlsx`.trim() || "Resumen.xlsx";
+        const ok = await saveBlobXlsx(xlsx, excelName);
+        if(!ok){ document.getElementById("message").innerText = "❌ No se pudo descargar el XLSX"; return; }
+
+        // 🔗 Tras descarga OK: preparar puente
+        const payload = buildRoaPayloadFromRegistro(data);
+        try { sessionStorage.setItem("registro→roa", JSON.stringify(payload)); } catch(e) { console.warn("sessionStorage no disponible", e); }
+
+        let prefillParam = "";
+        try {
+          const json = JSON.stringify(payload);
+          prefillParam = btoa(unescape(encodeURIComponent(json))); // Base64 UTF-8-safe
+        } catch(e) { console.warn("No se pudo serializar payload a Base64", e); }
+
+        document.getElementById("message").innerText = "✅ XLSX generado y descargado";
+
+        // Mostrar botón “Ir a R.O.A.” para gesto explícito (iOS safe)
+        const goBtn = document.getElementById("goRoaBtn");
+        if (goBtn) {
+          goBtn.style.display = "block";
+          goBtn.onclick = () => {
+            const url = prefillParam ? `${RUTA_ROA}?prefill=${prefillParam}` : RUTA_ROA;
+            location.href = url;
+          };
+        }
+      } catch(err){
+        console.error(err);
+        document.getElementById("message").innerText = "❌ " + (err?.message || err);
+      }
     }
 
   </script>
