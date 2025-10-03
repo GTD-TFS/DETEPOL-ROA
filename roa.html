@@ -107,9 +107,12 @@
           <input type="text" id="tipoDocumentoOtro" placeholder="Especificar otro" style="display:none;">
         </div>
         <div class="card"><label>Número de documento</label><input id="numeroDocumento" name="NÚMERO DE DOCUMENTO"></div>
+
+        <!-- 🔹 Estos tres campos deben rellenarse desde el payload -->
         <div class="card"><label>Nombre</label><input name="NOMBRE"></div>
         <div class="card"><label>Primer apellido</label><input name="PRIMER APELLIDO"></div>
         <div class="card"><label>Segundo apellido</label><input name="SEGUNDO APELLIDO"></div>
+
         <div class="card"><label>Fecha de nacimiento</label><input name="FECHA DE NACIMIENTO" placeholder="DD/MM/AAAA"></div>
         <div class="card"><label>Lugar de nacimiento</label><input name="LUGAR DE NACIMIENTO"></div>
         <div class="card"><label>Provincia</label><input name="PROVINCIA"></div>
@@ -244,24 +247,42 @@ function applyPrefillObject(obj){
   if(!obj || typeof obj!=="object") return 0;
   let count=0;
 
-  // nombre + apellidos (si vienen juntos)
-  if(obj.Nombre) { const e=findFieldByName("NOMBRE"); if(e){e.value=obj.Nombre; count++;} }
-  if(obj.APELLIDOS){
-    const {primer, segundo}=separarApellidos(obj.APELLIDOS);
+  /* 🔹 Nombre */
+  // Admite "Nombre" (del Excel/registro) y "NOMBRE" (del payload ya normalizado)
+  const nombre = obj.NOMBRE ?? obj.Nombre;
+  if (nombre != null) {
+    const e = findFieldByName("NOMBRE");
+    if (e){ e.value = nombre; count++; }
+  }
+
+  /* 🔹 Apellidos */
+  // Caso A: llegan separados desde index.html (payload ya partido)
+  const ap1 = obj["PRIMER APELLIDO"];
+  const ap2 = obj["SEGUNDO APELLIDO"];
+  if (ap1 != null || ap2 != null){
+    const e1 = findFieldByName("PRIMER APELLIDO");
+    const e2 = findFieldByName("SEGUNDO APELLIDO");
+    if (e1 && ap1 != null){ e1.value = ap1; count++; }
+    if (e2 && ap2 != null){ e2.value = ap2; count++; }
+  }
+
+  // Caso B: llegan juntos como "APELLIDOS" → separamos
+  if (obj.APELLIDOS && !(ap1 || ap2)){
+    const {primer, segundo} = separarApellidos(obj.APELLIDOS);
     const e1=findFieldByName("PRIMER APELLIDO");
     const e2=findFieldByName("SEGUNDO APELLIDO");
     if(e1){ e1.value=primer; count++; }
     if(e2){ e2.value=segundo; count++; }
   }
 
-  // tipo documento + nº
+  /* 🔹 Tipo doc + número */
   const td = obj["TIPO DOCUMENTO"] || obj["TIPO DOCUMENTO_OPCION"];
   if(td){ setTipoDocumentoDesdeExcel(td); count++; }
   if(obj["NºDOCUMENTO"] || obj["NÚMERO DE DOCUMENTO"]){
     setNumeroDocumentoDesdeExcel(obj["NºDOCUMENTO"] || obj["NÚMERO DE DOCUMENTO"]); count++;
   }
 
-  // sexo (H/M o texto)
+  /* 🔹 Sexo (H/M o texto) */
   if(obj.SEXO || obj["SEXO_OPCION"]){
     const sel=document.getElementById("sexo");
     const raw = (obj.SEXO || obj["SEXO_OPCION"] || "").toString().toUpperCase();
@@ -272,7 +293,7 @@ function applyPrefillObject(obj){
     }
   }
 
-  // mapeos directos por name (coinciden con ROA)
+  /* 🔹 Mapeos directos por name (coinciden con ROA) */
   const directKeys = [
     "NACIONALIDAD","PAÍS","PAIS","PROFESIÓN","LUGAR DE NACIMIENTO",
     "FECHA DE NACIMIENTO","TELÉFONO","DILIGENCIAS","FECHA DILIGENCIAS",
@@ -300,7 +321,9 @@ function tryPrefillFromSession(){
     if(!raw) return 0;
     const obj = JSON.parse(raw);
     const n = applyPrefillObject(obj);
-    if(n>0){ document.getElementById("bridgeBanner")?.classList.add("show"); }
+    if(n>0){
+      document.getElementById("bridgeBanner")?.classList.add("show");
+    }
     sessionStorage.removeItem("registro→roa");
     return n;
   }catch(e){ console.warn("Prefill session error:", e); return 0; }
@@ -313,7 +336,9 @@ function tryPrefillFromQuery(){
     const json = atob(b64);
     const obj = JSON.parse(json);
     const n = applyPrefillObject(obj);
-    if(n>0){ document.getElementById("bridgeBanner")?.classList.add("show"); }
+    if(n>0){
+      document.getElementById("bridgeBanner")?.classList.add("show");
+    }
     return n;
   }catch(e){ console.warn("Prefill query error:", e); return 0; }
 }
