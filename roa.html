@@ -51,7 +51,7 @@
       border:1px solid var(--border); border-radius:12px; padding:14px;
     }
     h2{
-      margin:16px 0 6px; font-size:14px; text-transform:uppercase; color:#b9d3ff;
+      margin:16px 0 6px; text-align:center; font-size:14px; text-transform:uppercase; color:#b9d3ff;
       border-bottom:2px solid #1f3b69; padding-bottom:4px;
     }
     .grid{ display:grid; gap:8px; grid-template-columns: repeat(1, 1fr); }
@@ -222,8 +222,9 @@ input:focus, select:focus, textarea:focus{
   <!-- Acciones -->
   <div class="actions">
     <input type="file" id="fileInputXLSX" class="mini" accept=".xlsx,.xls"/>
-    <button type="button" class="btn secondary" onclick="cargarExcel(event)">📁 Cargar EXCEL</button>
     <button type="button" class="btn ok" onclick="generarROA()">⬇️ Descargar R.O.A.</button>
+    <button type="button" class="btn secondary" onclick="cargarExcel(event)">📁 Cargar EXCEL</button>
+  
     <button type="button" class="btn warn" onclick="location.reload()">⟲ Refrescar</button>
     <button type="button" class="btn danger" onclick="location.href='index.html'">⟲ Iniciar nuevo detenido</button>
   </div>
@@ -614,4 +615,5 @@ window.addEventListener('DOMContentLoaded', ()=>{
 
 </body>
 </html>
+
 
