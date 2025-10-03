@@ -300,10 +300,7 @@ function tryPrefillFromSession(){
     if(!raw) return 0;
     const obj = JSON.parse(raw);
     const n = applyPrefillObject(obj);
-    if(n>0){
-      document.getElementById("bridgeBanner")?.classList.add("show");
-    }
-    // limpiar para no reinyectar si recarga
+    if(n>0){ document.getElementById("bridgeBanner")?.classList.add("show"); }
     sessionStorage.removeItem("registro→roa");
     return n;
   }catch(e){ console.warn("Prefill session error:", e); return 0; }
@@ -316,9 +313,7 @@ function tryPrefillFromQuery(){
     const json = atob(b64);
     const obj = JSON.parse(json);
     const n = applyPrefillObject(obj);
-    if(n>0){
-      document.getElementById("bridgeBanner")?.classList.add("show");
-    }
+    if(n>0){ document.getElementById("bridgeBanner")?.classList.add("show"); }
     return n;
   }catch(e){ console.warn("Prefill query error:", e); return 0; }
 }
@@ -552,50 +547,8 @@ window.addEventListener('DOMContentLoaded', ()=>{
   // Prefill desde sessionStorage o ?prefill=
   const n1 = tryPrefillFromSession();
   const n2 = (!n1 ? tryPrefillFromQuery() : 0);
-  if(!n1 && !n2){
-    // nada que importar
-  }
 });
 </script>
-
- <script>
-  window.addEventListener('DOMContentLoaded', ()=>{
-    try{
-      const raw = sessionStorage.getItem("registro→roa");
-      if(!raw) return;
-      const data = JSON.parse(raw);
-
-      // Rellena por [name] si existe
-      Object.entries(data).forEach(([k,v])=>{
-        const el = document.querySelector(`[name="${k}"]`);
-        if(!el) return;
-        if (el.tagName === "SELECT") el.value = v;
-        else el.value = v || "";
-      });
-
-      // Campos especiales
-      const tdSel = document.getElementById("tipoDocumento");
-      const tdOtro = document.getElementById("tipoDocumentoOtro");
-      if (tdSel) {
-        const val = data["TIPO DOCUMENTO"] || "";
-        if (["DNI","NIE","PASAPORTE","INDOCUMENTADO/A","OTRO"].includes(val)) {
-          tdSel.value = val;
-          if (val === "OTRO" && tdOtro) tdOtro.style.display="block";
-        } else {
-          tdSel.value = "OTRO";
-          if (tdOtro){ tdOtro.style.display="block"; tdOtro.value = val; }
-        }
-      }
-      const sexo = document.getElementById("sexo");
-      if (sexo && (data["SEXO"]==="H" || data["SEXO"]==="M")) sexo.value = data["SEXO"];
-
-      // Limpia el puente
-      sessionStorage.removeItem("registro→roa");
-      const msg = document.getElementById("message");
-      if (msg) msg.innerText = "ℹ️ Datos importados desde Registro.";
-    }catch(e){ console.warn("Sin prefill ROA:", e); }
-  });
-  </script>
 
 </body>
 </html>
